@@ -1,7 +1,8 @@
 {
-    "name": "atomico",
-    "version": "1.34.1",
-    "description": "Atomico is a small library for the creation of interfaces based on web-components, only using functions and hooks.",
+    "name": "tessy-jsx",
+    "version": "2.0.1",
+    "author": "Leonardo Quintana",
+    "description": "Tessy is a small JSX library for creating web components using the full potential of react hooks thanks to the atomic js base library.",
     "type": "module",
     "main": "./core.js",
     "module": "./core.js",
@@ -42,7 +43,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+ssh://git@github.com/atomicojs/atomico.git"
+        "url": "git+ssh://git@github.com:JorgeAntrax/atomico.git"
     },
     "keywords": [
         "jsx",

@@ -30,4 +30,15 @@ export const isFunction = (value) => typeof value == "function";
  */
 export const isObject = (value) => typeof value == "object";
 
+export const getComponentName = (str) => {
+    return str
+        .split("")
+        .map((letter, idx) => {
+            return letter.toUpperCase() === letter
+                ? `${idx !== 0 ? "-" : ""}${letter.toLowerCase()}`
+                : letter;
+        })
+        .join("");
+};
+
 export const { isArray } = Array;

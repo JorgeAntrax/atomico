@@ -3,154 +3,164 @@ import { createHooks } from "../hooks/create-hooks.js";
 import { render } from "../render.js";
 export { Any } from "./set-prototype.js";
 import { options } from "../options.js";
-import { isArray } from "../utils.js";
+import { isArray, getComponentName } from "../utils.js";
 /**
  * Class to extend for lifecycle assignment
  * @param {any} component - Function to transform into customElement
  * @param {Base} [Base] - Class to extend for lifecycle assignment
  */
-export function c(component, Base = HTMLElement) {
-    /**
-     * @type {import("./set-prototype").Attrs}
-     */
-    let attrs = {};
-    /**
-     * @type {import("./set-prototype").Values}
-     */
-    let values = {};
 
-    let { props, styles } = component;
-
-    let Atom = class extends Base {
-        constructor() {
-            super();
-            this._setup();
-            this._render = () => component({ ...this._props });
-            for (let prop in values) this[prop] = values[prop];
-        }
+export function connect(component, Base = HTMLElement) {
+    return (styles = null) => {
         /**
-         * @returns {Style[]|Style}
+         * @type {import("./set-prototype").Attrs}
          */
-        static get styles() {
-            //@ts-ignore
-            return [super.styles, styles];
-        }
-        async _setup() {
-            // _setup only continues if _props has not been defined
-            if (this._props) return;
+        let attrs = {};
+        /**
+         * @type {import("./set-prototype").Values}
+         */
+        let values = {};
+        /**
+         * @name name of component Function
+         */
+        const name = getComponentName(component.name);
 
-            this._props = {};
+        let { props } = component;
 
-            this.mounted = new Promise((resolve) => (this.mount = resolve));
-            this.unmounted = new Promise((resolve) => (this.unmount = resolve));
+        let Atom = class extends Base {
+            constructor() {
+                super();
+                this._setup();
+                this._render = () => component({ ...this._props });
+                for (let prop in values) this[prop] = values[prop];
+            }
+            /**
+             * @returns {Style[]|Style}
+             */
+            static get styles() {
+                //@ts-ignore
+                return [super.styles, styles];
+            }
+            async _setup() {
+                // _setup only continues if _props has not been defined
+                if (this._props) return;
 
-            this.symbolId = this.symbolId || Symbol();
+                this._props = {};
 
-            let hooks = createHooks(() => this.update(), this);
+                this.mounted = new Promise((resolve) => (this.mount = resolve));
+                this.unmounted = new Promise((resolve) => (this.unmount = resolve));
 
-            let prevent;
+                this.symbolId = this.symbolId || Symbol();
 
-            let firstRender = true;
+                let hooks = createHooks(() => this.update(), this);
 
-            let hydrate = "hydrate" in this.dataset;
+                let prevent;
 
-            this.update = (props) => {
-                if (!prevent) {
-                    prevent = true;
+                let firstRender = true;
 
-                    /**
-                     * this.updated is defined at the runtime of the render,
-                     * if it fails it is caught by mistake to unlock prevent
-                     */
-                    this.updated = (this.updated || this.mounted)
-                        .then(() => {
-                            try {
-                                render(
-                                    hooks.load(this._render),
-                                    this,
-                                    this.symbolId,
-                                    firstRender && hydrate
-                                );
-                                prevent = false;
-                                if (firstRender) {
-                                    firstRender = false;
-                                    // @ts-ignore
-                                    applyStyles(this);
+                let hydrate = "hydrate" in this.dataset;
+
+                this.update = (props) => {
+                    if (!prevent) {
+                        prevent = true;
+
+                        /**
+                         * this.updated is defined at the runtime of the render,
+                         * if it fails it is caught by mistake to unlock prevent
+                         */
+                        this.updated = (this.updated || this.mounted)
+                            .then(() => {
+                                try {
+                                    render(
+                                        hooks.load(this._render),
+                                        this,
+                                        this.symbolId,
+                                        firstRender && hydrate
+                                    );
+                                    prevent = false;
+                                    if (firstRender) {
+                                        firstRender = false;
+                                        // @ts-ignore
+                                        applyStyles(this);
+                                    }
+                                    return !options.ssr && hooks.cleanEffects();
+                                } finally {
+                                    // Remove lock in case of synchronous error
+                                    prevent = false;
                                 }
-                                return !options.ssr && hooks.cleanEffects();
-                            } finally {
-                                // Remove lock in case of synchronous error
-                                prevent = false;
-                            }
-                        })
-                        // next tick
-                        .then((cleanEffect) => {
-                            cleanEffect && cleanEffect();
-                        });
-                }
+                            })
+                            // next tick
+                            .then((cleanEffect) => {
+                                cleanEffect && cleanEffect();
+                            });
+                    }
 
-                if (props) {
-                    for (let prop in props) this._props[prop] = props[prop];
-                }
+                    if (props) {
+                        for (let prop in props) this._props[prop] = props[prop];
+                    }
 
-                return this.updated;
-            };
+                    return this.updated;
+                };
 
-            this.update();
+                this.update();
 
-            options.ssr && options.ssr(this);
+                options.ssr && options.ssr(this);
 
-            await this.unmounted;
+                await this.unmounted;
 
-            !options.ssr && hooks.cleanEffects(true)();
-        }
-        connectedCallback() {
-            this.mount();
-            //@ts-ignore
-            super.connectedCallback && super.connectedCallback();
-        }
-        async disconnectedCallback() {
-            //@ts-ignore
-            super.disconnectedCallback && super.disconnectedCallback();
-            // The webcomponent will only resolve disconnected if it is
-            // actually disconnected of the document, otherwise it will keep the record.
-            await this.mounted;
-            !this.isConnected && this.unmount();
-        }
-        /**
-         * @param {string} attr
-         * @param {(string|null)} oldValue
-         * @param {(string|null)} value
-         */
-        attributeChangedCallback(attr, oldValue, value) {
-            if (attrs[attr]) {
-                // _ignoreAttr exists temporarily
-                // @ts-ignore
-                if (attr === this._ignoreAttr || oldValue === value) return;
-                // Choose the property name to send the update
-                let { prop, type } = attrs[attr];
-                this[prop] = transformValue(type, value);
-            } else {
-                // If the attribute does not exist in the scope attrs, the event is sent to super
-                // @ts-ignore
-                super.attributeChangedCallback(attr, oldValue, value);
+                !options.ssr && hooks.cleanEffects(true)();
             }
-        }
-
-        static get observedAttributes() {
-            // See if there is an observedAttributes declaration to match with the current one
-            // @ts-ignore
-            let superAttrs = super.observedAttributes || [];
-            for (let prop in props) {
-                setPrototype(this.prototype, prop, props[prop], attrs, values);
+            connectedCallback() {
+                this.mount();
+                //@ts-ignore
+                super.connectedCallback && super.connectedCallback();
             }
-            return Object.keys(attrs).concat(superAttrs);
-        }
-    };
+            async disconnectedCallback() {
+                //@ts-ignore
+                super.disconnectedCallback && super.disconnectedCallback();
+                // The webcomponent will only resolve disconnected if it is
+                // actually disconnected of the document, otherwise it will keep the record.
+                await this.mounted;
+                !this.isConnected && this.unmount();
+            }
+            /**
+             * @param {string} attr
+             * @param {(string|null)} oldValue
+             * @param {(string|null)} value
+             */
+            attributeChangedCallback(attr, oldValue, value) {
+                if (attrs[attr]) {
+                    // _ignoreAttr exists temporarily
+                    // @ts-ignore
+                    if (attr === this._ignoreAttr || oldValue === value) return;
+                    // Choose the property name to send the update
+                    let { prop, type } = attrs[attr];
+                    this[prop] = transformValue(type, value);
+                } else {
+                    // If the attribute does not exist in the scope attrs, the event is sent to super
+                    // @ts-ignore
+                    super.attributeChangedCallback(attr, oldValue, value);
+                }
+            }
 
-    return Atom;
+            static get observedAttributes() {
+                // See if there is an observedAttributes declaration to match with the current one
+                // @ts-ignore
+                let superAttrs = super.observedAttributes || [];
+                for (let prop in props) {
+                    setPrototype(this.prototype, prop, props[prop], attrs, values);
+                }
+                return Object.keys(attrs).concat(superAttrs);
+            }
+        };
+
+        if(typeof window !== 'undefined') {
+            window.customElements.define(name, Atom);
+        }
+
+        return Atom;
+    }
 }
-
 /**
  * Attach the css to the shadowDom
  * @param {Base &  {shadowRoot: ShadowRoot, constructor: {styles: Style[] }} } host
